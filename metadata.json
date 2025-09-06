@@ -1,0 +1,5 @@
+{
+  "name": "Exercise Database Manager",
+  "description": "An application to load, view, add, edit, and save a database of exercises from a JSON file. It provides a user-friendly interface to manage large sets of exercise data efficiently.",
+  "requestFramePermissions": []
+}
