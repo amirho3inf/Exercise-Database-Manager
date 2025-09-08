@@ -56,10 +56,11 @@ export interface Exercise {
     primary_muscles: Muscle[];
     secondary_muscles: Muscle[];
     description: string;
+    description_fa: string;
     instructions: string[];
+    instructions_fa: string[];
     video: string | null;
     images: string[];
     aliases: string[];
-    tips: string[];
     variation_on: string[];
 }

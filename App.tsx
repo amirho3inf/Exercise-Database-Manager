@@ -15,6 +15,9 @@ export default function App() {
   const [editingExercise, setEditingExercise] = useState<Exercise | 'new' | null>(null);
   const [fileName, setFileName] = useState<string>('exercises.json');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [apiKey, setApiKey] = useState('');
+  const [tempApiKey, setTempApiKey] = useState('');
+
 
   const [categoryFilter, setCategoryFilter] = useState<'all' | Category>('all');
   const [equipmentFilter, setEquipmentFilter] = useState<'all' | Equipment>('all');
@@ -23,6 +26,20 @@ export default function App() {
   
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const deleteTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const storedKey = localStorage.getItem('gemini-api-key');
+    if (storedKey) {
+      setApiKey(storedKey);
+      setTempApiKey(storedKey);
+    }
+  }, []);
+
+  const handleApiKeySave = () => {
+    setApiKey(tempApiKey);
+    localStorage.setItem('gemini-api-key', tempApiKey);
+    alert('API Key saved!');
+  };
 
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -173,6 +190,26 @@ export default function App() {
         </header>
 
         <div className="bg-slate-800 rounded-lg shadow-xl p-6 mb-6">
+          <div className="bg-slate-700/50 rounded-md p-4 mb-6 border border-slate-600">
+              <h3 className="text-lg font-semibold text-sky-300 mb-2">Gemini API Key</h3>
+              <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                      type="password"
+                      placeholder="Enter your Gemini API Key"
+                      value={tempApiKey}
+                      onChange={(e) => setTempApiKey(e.target.value)}
+                      className="flex-grow bg-slate-800 border border-slate-600 rounded-md px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  />
+                  <button
+                      onClick={handleApiKeySave}
+                      className="bg-sky-600 hover:bg-sky-500 text-white font-bold py-2 px-4 rounded-md transition-colors"
+                  >
+                      Save Key
+                  </button>
+              </div>
+              {!apiKey && <p className="text-xs text-yellow-400 mt-2">API key is required for translation features.</p>}
+          </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                 <input
                     type="text"
@@ -260,6 +297,7 @@ export default function App() {
           exercise={editingExercise === 'new' ? null : editingExercise}
           onSave={handleSaveExercise}
           onClose={() => setEditingExercise(null)}
+          apiKey={apiKey}
         />
       )}
     </div>

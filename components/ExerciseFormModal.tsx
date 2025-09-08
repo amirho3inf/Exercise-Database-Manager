@@ -2,11 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Exercise, Muscle, Equipment } from '../types';
 import { CATEGORIES, EQUIPMENT_OPTIONS, MUSCLE_OPTIONS } from '../constants';
 import { ImageIcon } from './Icons';
+import { translateToPersian, translateAllToPersian, AllTranslations } from '../services/translationService';
 
 interface ExerciseFormModalProps {
   exercise: Exercise | null;
   onSave: (exercise: Exercise) => void;
   onClose: () => void;
+  apiKey: string;
 }
 
 const defaultExercise: Omit<Exercise, 'id'> = {
@@ -17,11 +19,12 @@ const defaultExercise: Omit<Exercise, 'id'> = {
   primary_muscles: [],
   secondary_muscles: [],
   description: '',
+  description_fa: '',
   instructions: [''],
+  instructions_fa: [''],
   video: '',
   images: [''],
   aliases: [''],
-  tips: [''],
   variation_on: [''],
 };
 
@@ -137,10 +140,18 @@ const MultiSelectPillInput = <T extends string>({
 };
 
 
-const ExerciseFormModal: React.FC<ExerciseFormModalProps> = ({ exercise, onSave, onClose }) => {
+const ExerciseFormModal: React.FC<ExerciseFormModalProps> = ({ exercise, onSave, onClose, apiKey }) => {
   const [formData, setFormData] = useState<Omit<Exercise, 'id'>>(() => 
     exercise ? { ...exercise } : defaultExercise
   );
+  
+  const [isTranslating, setIsTranslating] = useState({
+    name: false,
+    description: false,
+    instructions: false,
+  });
+  const [isTranslatingAll, setIsTranslatingAll] = useState(false);
+
 
   useEffect(() => {
     setFormData(exercise ? { ...exercise } : defaultExercise);
@@ -184,12 +195,63 @@ const ExerciseFormModal: React.FC<ExerciseFormModalProps> = ({ exercise, onSave,
     });
   };
 
-  const handleMultilineStringToArrayChange = (field: keyof Pick<Exercise, 'instructions' | 'tips'>, value: string) => {
+  const handleMultilineStringToArrayChange = (field: keyof Pick<Exercise, 'instructions' | 'instructions_fa'>, value: string) => {
     setFormData(prev => ({
       ...prev,
       [field]: value.split('\n'),
     }));
   };
+  
+  const handleTranslate = async (field: 'name' | 'description' | 'instructions') => {
+      setIsTranslating(prev => ({ ...prev, [field]: true }));
+      try {
+          let sourceText = '';
+          if (field === 'name') sourceText = formData.name_en;
+          else if (field === 'description') sourceText = formData.description;
+          else if (field === 'instructions') sourceText = formData.instructions.join('\n');
+
+          if (!sourceText.trim()) return;
+
+          const translatedText = await translateToPersian(sourceText, apiKey);
+
+          setFormData(prev => {
+              const newState = { ...prev };
+              if (field === 'name') newState.name = translatedText;
+              else if (field === 'description') newState.description_fa = translatedText;
+              else if (field === 'instructions') newState.instructions_fa = translatedText.split('\n');
+              return newState;
+          });
+      } catch (error) {
+          console.error(`Translation failed for ${field}:`, error);
+          alert(`Failed to translate ${field}. Check API Key and console for details.`);
+      } finally {
+          setIsTranslating(prev => ({ ...prev, [field]: false }));
+      }
+  };
+
+  const handleTranslateAll = async () => {
+    setIsTranslatingAll(true);
+    try {
+        const { name_en, description, instructions } = formData;
+        if (!name_en && !description && !instructions.join('')) return;
+
+        const translations: AllTranslations = await translateAllToPersian(name_en, description, instructions, apiKey);
+
+        setFormData(prev => ({
+            ...prev,
+            name: translations.name || prev.name,
+            description_fa: translations.description || prev.description_fa,
+            instructions_fa: translations.instructions.split('\n') || prev.instructions_fa,
+        }));
+
+    } catch (error) {
+        console.error('Translate All failed:', error);
+        alert('Failed to translate all fields. Check API Key and console for details.');
+    } finally {
+        setIsTranslatingAll(false);
+    }
+  };
+
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -197,9 +259,9 @@ const ExerciseFormModal: React.FC<ExerciseFormModalProps> = ({ exercise, onSave,
       ...formData,
       id: exercise?.id ?? 0, // ID is handled by App component logic
       instructions: formData.instructions.filter(i => i.trim() !== ''),
+      instructions_fa: formData.instructions_fa.filter(i => i.trim() !== ''),
       images: formData.images.filter(i => i.trim() !== ''),
       aliases: formData.aliases.filter(i => i.trim() !== ''),
-      tips: formData.tips.filter(i => i.trim() !== ''),
       variation_on: formData.variation_on.filter(i => i.trim() !== ''),
     };
     onSave(finalExercise);
@@ -238,12 +300,36 @@ const ExerciseFormModal: React.FC<ExerciseFormModalProps> = ({ exercise, onSave,
       </button>
     </div>
   );
+  
+  const anyIndividualTranslationRunning = isTranslating.name || isTranslating.description || isTranslating.instructions;
+
+  const TranslateButton = ({ onClick, isLoading, disabled }: { onClick: () => void; isLoading: boolean; disabled: boolean }) => (
+    <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled || isLoading || !apiKey || isTranslatingAll}
+        className="ml-2 text-xs bg-sky-700 text-sky-200 px-2 py-0.5 rounded-md hover:bg-sky-600 disabled:bg-slate-600 disabled:cursor-not-allowed"
+    >
+        {isLoading ? 'Translating...' : 'Translate'}
+    </button>
+  );
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-70 flex justify-center items-center z-50 p-4" onClick={onClose}>
       <div className="bg-slate-800 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <form onSubmit={handleSubmit} className="p-4 sm:p-6">
-          <h2 className="text-2xl font-bold mb-6 text-sky-400">{exercise ? 'Edit Exercise' : 'Add New Exercise'}</h2>
+          <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-sky-400">{exercise ? 'Edit Exercise' : 'Add New Exercise'}</h2>
+              <button
+                type="button"
+                onClick={handleTranslateAll}
+                disabled={!apiKey || isTranslatingAll || anyIndividualTranslationRunning}
+                className="bg-purple-600 hover:bg-purple-500 text-white font-bold py-2 px-4 rounded-md transition-colors disabled:bg-slate-600 disabled:cursor-not-allowed text-sm"
+              >
+                {isTranslatingAll ? 'Translating All...' : 'Translate All Fields'}
+              </button>
+          </div>
+
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
              <div>
@@ -251,7 +337,14 @@ const ExerciseFormModal: React.FC<ExerciseFormModalProps> = ({ exercise, onSave,
                 <input type="text" name="name_en" id="name_en" value={formData.name_en} onChange={handleChange} required className="mt-1 block w-full bg-slate-700 border border-slate-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-sky-500 focus:border-sky-500" />
             </div>
             <div>
-                <label htmlFor="name" className="block text-sm font-medium text-slate-300">Name (Persian)</label>
+                <label htmlFor="name" className="block text-sm font-medium text-slate-300">
+                    Name (Persian)
+                    <TranslateButton
+                        onClick={() => handleTranslate('name')}
+                        isLoading={isTranslating.name}
+                        disabled={!formData.name_en}
+                    />
+                </label>
                 <input type="text" name="name" id="name" value={formData.name} onChange={handleChange} required className="mt-1 block w-full bg-slate-700 border border-slate-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-sky-500 focus:border-sky-500" />
             </div>
             <div>
@@ -264,12 +357,26 @@ const ExerciseFormModal: React.FC<ExerciseFormModalProps> = ({ exercise, onSave,
                 <label htmlFor="video" className="block text-sm font-medium text-slate-300">Video URL</label>
                 <input type="text" name="video" id="video" value={formData.video ?? ''} onChange={handleChange} className="mt-1 block w-full bg-slate-700 border border-slate-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-sky-500 focus:border-sky-500" />
             </div>
-            <div className="md:col-span-2">
-                <label htmlFor="description" className="block text-sm font-medium text-slate-300">Description</label>
-                <textarea name="description" id="description" value={formData.description} onChange={handleChange} rows={3} className="mt-1 block w-full bg-slate-700 border border-slate-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-sky-500 focus:border-sky-500"></textarea>
-            </div>
           </div>
           
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+              <div>
+                <label htmlFor="description" className="block text-sm font-medium text-slate-300">Description (English)</label>
+                <textarea name="description" id="description" value={formData.description} onChange={handleChange} rows={4} className="mt-1 block w-full bg-slate-700 border border-slate-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-sky-500 focus:border-sky-500 resize-y"></textarea>
+              </div>
+              <div>
+                <label htmlFor="description_fa" className="block text-sm font-medium text-slate-300">
+                  Description (Persian)
+                  <TranslateButton
+                        onClick={() => handleTranslate('description')}
+                        isLoading={isTranslating.description}
+                        disabled={!formData.description}
+                    />
+                </label>
+                <textarea name="description_fa" id="description_fa" value={formData.description_fa} onChange={handleChange} rows={4} className="mt-1 block w-full bg-slate-700 border border-slate-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-sky-500 focus:border-sky-500 resize-y"></textarea>
+              </div>
+          </div>
+
           <div className="space-y-6 mb-4">
             <MultiSelectPillInput<Equipment>
               title="Equipment"
@@ -294,9 +401,9 @@ const ExerciseFormModal: React.FC<ExerciseFormModalProps> = ({ exercise, onSave,
             />
           </div>
 
-          <div className="space-y-6 my-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 my-6">
             <div>
-                <label htmlFor="instructions" className="block text-sm font-medium text-slate-300 mb-2">Instructions</label>
+                <label htmlFor="instructions" className="block text-sm font-medium text-slate-300 mb-2">Instructions (English)</label>
                 <textarea
                     id="instructions"
                     name="instructions"
@@ -308,14 +415,21 @@ const ExerciseFormModal: React.FC<ExerciseFormModalProps> = ({ exercise, onSave,
                 />
             </div>
             <div>
-                <label htmlFor="tips" className="block text-sm font-medium text-slate-300 mb-2">Tips</label>
+                <label htmlFor="instructions_fa" className="block text-sm font-medium text-slate-300 mb-2">
+                  Instructions (Persian)
+                  <TranslateButton
+                        onClick={() => handleTranslate('instructions')}
+                        isLoading={isTranslating.instructions}
+                        disabled={!formData.instructions.join('')}
+                    />
+                </label>
                 <textarea
-                    id="tips"
-                    name="tips"
-                    placeholder="Enter each tip on a new line..."
-                    value={(formData.tips || []).join('\n')}
-                    onChange={(e) => handleMultilineStringToArrayChange('tips', e.target.value)}
-                    rows={4}
+                    id="instructions_fa"
+                    name="instructions_fa"
+                    placeholder="Enter each instruction on a new line..."
+                    value={(formData.instructions_fa || []).join('\n')}
+                    onChange={(e) => handleMultilineStringToArrayChange('instructions_fa', e.target.value)}
+                    rows={6}
                     className="block w-full bg-slate-700 border border-slate-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-sky-500 focus:border-sky-500 resize-y"
                 />
             </div>
